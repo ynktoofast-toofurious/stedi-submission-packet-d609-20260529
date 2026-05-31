@@ -1,11 +1,13 @@
 import sys
 from awsglue.context import GlueContext
+from awsglue.dynamicframe import DynamicFrame
 from awsglue.job import Job
 from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 
 args = getResolvedOptions(sys.argv, ["JOB_NAME"])
 DATABASE = "stedi"
+TARGET_TABLE = "machine_learning_curated"
 OUTPUT_PATH = "s3://stedi-d609-096936281593-20260529/step_trainer/curated/"
 
 sc = SparkContext()
@@ -43,6 +45,17 @@ curated_df = (
     .dropDuplicates()
 )
 
-curated_df.write.mode("overwrite").parquet(OUTPUT_PATH)
+curated_dyf = DynamicFrame.fromDF(curated_df, glue_context, "curated_dyf")
+sink = glue_context.getSink(
+    path=OUTPUT_PATH,
+    connection_type="s3",
+    updateBehavior="UPDATE_IN_DATABASE",
+    partitionKeys=[],
+    enableUpdateCatalog=True,
+    transformation_ctx="curated_sink",
+)
+sink.setCatalogInfo(catalogDatabase=DATABASE, catalogTableName=TARGET_TABLE)
+sink.setFormat("glueparquet")
+sink.writeFrame(curated_dyf)
 
 job.commit()
